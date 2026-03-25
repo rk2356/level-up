@@ -1,0 +1,136 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-secondary-container: #5d2c92;
+  --color-outline-variant: #48474d;
+  --color-tertiary-dim: #ef77a0;
+  --color-on-error-container: #ffb2b9;
+  --color-error-container: #a70138;
+  --color-on-background: #f9f5fd;
+  --color-on-surface-variant: #acaab1;
+  --color-background: #0e0e13;
+  --color-primary-fixed-dim: #a07dff;
+  --color-inverse-primary: #6d23f9;
+  --color-on-secondary-container: #e2c5ff;
+  --color-on-error: #490013;
+  --color-on-secondary-fixed: #49147f;
+  --color-surface-variant: #25252d;
+  --color-error-dim: #d73357;
+  --color-secondary-fixed-dim: #d8b5ff;
+  --color-on-tertiary-fixed: #380019;
+  --color-primary-fixed: #ac8eff;
+  --color-surface-dim: #0e0e13;
+  --color-primary-container: #ac8eff;
+  --color-on-surface: #f9f5fd;
+  --color-secondary: #c492fe;
+  --color-secondary-fixed: #e3c6ff;
+  --color-error: #ff6e84;
+  --color-surface: #0e0e13;
+  --color-secondary-dim: #b987f2;
+  --color-on-secondary-fixed-variant: #67389d;
+  --color-surface-tint: #b89fff;
+  --color-surface-container-high: #1f1f26;
+  --color-on-tertiary: #6a0936;
+  --color-tertiary-container: #fc81ab;
+  --color-on-primary-fixed: #000000;
+  --color-inverse-on-surface: #55545b;
+  --color-tertiary-fixed: #ff8db2;
+  --color-on-secondary: #3e0174;
+  --color-on-primary-container: #2a0070;
+  --color-primary: #b89fff;
+  --color-outline: #76747b;
+  --color-surface-container-low: #131319;
+  --color-primary-dim: #834fff;
+  --color-on-tertiary-fixed-variant: #70103b;
+  --color-inverse-surface: #fcf8ff;
+  --color-tertiary: #ff97b8;
+  --color-surface-container-lowest: #000000;
+  --color-on-primary-fixed-variant: #350088;
+  --color-tertiary-fixed-dim: #f57ca5;
+  --color-on-primary: #37008e;
+  --color-surface-container-highest: #25252d;
+  --color-surface-bright: #2c2b33;
+  --color-surface-container: #19191f;
+  --color-on-tertiary-container: #59002b;
+
+  --font-headline: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-label: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-surface font-body;
+    min-height: max(884px, 100dvh);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  .kinetic-glow {
+    background: radial-gradient(circle at center, rgba(184, 159, 255, 0.15) 0%, transparent 70%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings:
+  'FILL' 0,
+  'wght' 400,
+  'GRAD' 0,
+  'opsz' 24;
+}
+
+.progress-ring-circle {
+  transition: stroke-dashoffset 0.35s;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.calendar-ring-partial {
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--color-primary);
+  border-right-color: var(--color-primary);
+  transform: rotate(-45deg);
+}
+
+.calendar-ring-partial > span {
+  transform: rotate(45deg);
+}
+
+.streak-line {
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+}
