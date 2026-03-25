@@ -15,15 +15,20 @@ async function startServer() {
 
   app.post("/api/chat", async (req, res) => {
     try {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ error: 'GROQ_API_KEY is not configured on the server.' });
+      }
+
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer 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'
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           messages: req.body.messages,
-          model: 'llama-3.3-70b-versatile',
+          model: req.body.model || 'llama-3.3-70b-versatile',
           stream: false,
           temperature: 0.7,
           tools: req.body.tools,
@@ -38,7 +43,7 @@ async function startServer() {
           const errorJson = JSON.parse(errorText);
           return res.status(response.status).json({ error: errorJson.error?.message || errorJson.error || 'Failed to fetch response from AI' });
         } catch (e) {
-          return res.status(response.status).json({ error: 'Failed to fetch response from AI' });
+          return res.status(response.status).json({ error: `AI API Error: ${response.status}` });
         }
       }
 

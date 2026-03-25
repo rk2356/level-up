@@ -4,10 +4,9 @@ import { clsx } from 'clsx';
 import { useModules } from '../contexts/ModuleContext';
 import { useCalendar } from '../contexts/CalendarContext';
 import { useNotifications } from '../contexts/NotificationContext';
-import { GoogleGenAI } from "@google/genai";
 
 interface Message {
-  role: 'user' | 'assistant' | 'model';
+  role: 'user' | 'assistant' | 'system';
   content: string;
 }
 
@@ -36,20 +35,12 @@ export default function AIChatbot() {
     const messageText = customInput || input.trim();
     if (!messageText || isLoading) return;
 
-    if (!process.env.GEMINI_API_KEY) {
-      setMessages(prev => [...prev, { role: 'user', content: messageText }, { role: 'assistant', content: 'Error: GEMINI_API_KEY is missing. Please add it to your environment variables.' }]);
-      if (!customInput) setInput('');
-      return;
-    }
-
     if (!customInput) setInput('');
     const newMessages: Message[] = [...messages, { role: 'user', content: messageText }];
     setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
       const systemPrompt = `You are Level Up, a professional and highly capable personal growth assistant.
 Your goal is to help users manage their learning modules, tasks, and calendar.
 
@@ -73,72 +64,81 @@ Instructions:
 
 Example: If a user says "I want to master React", you MUST generate a full learning path (e.g., Intro, JSX, Hooks, State, API, Deployment) and add it as a module.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          ...newMessages.map(m => ({ 
-            role: m.role === 'assistant' ? 'model' : 'user', 
-            parts: [{ text: m.content }] 
-          }))
-        ],
-        config: {
-          tools: [{
-            functionDeclarations: [
-              {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...newMessages
+          ],
+          model: 'llama-3.3-70b-versatile',
+          tools: [
+            {
+              type: 'function',
+              function: {
                 name: 'add_task',
                 description: 'Add a new task to a specific module.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    moduleId: { type: 'STRING' as any, description: 'The ID of the module to add the task to.' },
-                    title: { type: 'STRING' as any, description: 'The title of the task.' },
-                    icon: { type: 'STRING' as any, description: 'A Material Symbols icon name for the task (e.g., "edit", "code", "mic").' }
+                    moduleId: { type: 'string', description: 'The ID of the module to add the task to.' },
+                    title: { type: 'string', description: 'The title of the task.' },
+                    icon: { type: 'string', description: 'A Material Symbols icon name for the task (e.g., "edit", "code", "mic").' }
                   },
                   required: ['moduleId', 'title']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'update_task',
                 description: 'Update an existing task (e.g., mark as completed).',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    moduleId: { type: 'STRING' as any, description: 'The ID of the module containing the task.' },
-                    taskId: { type: 'STRING' as any, description: 'The ID of the task to update.' },
-                    completed: { type: 'BOOLEAN' as any, description: 'Whether the task is completed.' }
+                    moduleId: { type: 'string', description: 'The ID of the module containing the task.' },
+                    taskId: { type: 'string', description: 'The ID of the task to update.' },
+                    completed: { type: 'boolean', description: 'Whether the task is completed.' }
                   },
                   required: ['moduleId', 'taskId', 'completed']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'delete_task',
                 description: 'Delete a task from a module.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    moduleId: { type: 'STRING' as any, description: 'The ID of the module containing the task.' },
-                    taskId: { type: 'STRING' as any, description: 'The ID of the task to delete.' }
+                    moduleId: { type: 'string', description: 'The ID of the module containing the task.' },
+                    taskId: { type: 'string', description: 'The ID of the task to delete.' }
                   },
                   required: ['moduleId', 'taskId']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'add_module',
                 description: 'Add a new learning or productivity module with an optional detailed learning path (tasks).',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    title: { type: 'STRING' as any, description: 'The title of the module.' },
-                    icon: { type: 'STRING' as any, description: 'A Material Symbols icon name for the module.' },
-                    color: { type: 'STRING' as any, description: 'The theme color (violet, blue, green, orange).' },
+                    title: { type: 'string', description: 'The title of the module.' },
+                    icon: { type: 'string', description: 'A Material Symbols icon name for the module.' },
+                    color: { type: 'string', description: 'The theme color (violet, blue, green, orange).' },
                     tasks: {
-                      type: 'ARRAY' as any,
+                      type: 'array',
                       items: {
-                        type: 'OBJECT' as any,
+                        type: 'object',
                         properties: {
-                          title: { type: 'STRING' as any, description: 'The title of the learning step/task.' },
-                          icon: { type: 'STRING' as any, description: 'Icon for the task.' }
+                          title: { type: 'string', description: 'The title of the learning step/task.' },
+                          icon: { type: 'string', description: 'Icon for the task.' }
                         },
                         required: ['title', 'icon']
                       },
@@ -147,85 +147,106 @@ Example: If a user says "I want to master React", you MUST generate a full learn
                   },
                   required: ['title', 'icon', 'color']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'add_notification',
                 description: 'Send a motivational notification to the user.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    title: { type: 'STRING' as any, description: 'The title of the notification.' },
-                    message: { type: 'STRING' as any, description: 'The motivational message including pending tasks and a quote.' }
+                    title: { type: 'string', description: 'The title of the notification.' },
+                    message: { type: 'string', description: 'The motivational message including pending tasks and a quote.' }
                   },
                   required: ['title', 'message']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'delete_module',
                 description: 'Delete an entire module and all its tasks.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    moduleId: { type: 'STRING' as any, description: 'The ID of the module to delete.' }
+                    moduleId: { type: 'string', description: 'The ID of the module to delete.' }
                   },
                   required: ['moduleId']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'add_calendar_event',
                 description: 'Add an event or session to the calendar.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    title: { type: 'STRING' as any, description: 'The event title (e.g., "Deep Work Session").' },
-                    module: { type: 'STRING' as any, description: 'The module name this belongs to.' },
-                    sub: { type: 'STRING' as any, description: 'A sub-category or specific topic.' },
-                    color: { type: 'STRING' as any, description: 'The theme color (violet, blue, green, orange).' },
-                    date: { type: 'STRING' as any, description: 'The date in YYYY-MM-DD format.' },
-                    time: { type: 'STRING' as any, description: 'The time in HH:MM format (optional).' }
+                    title: { type: 'string', description: 'The event title (e.g., "Deep Work Session").' },
+                    module: { type: 'string', description: 'The module name this belongs to.' },
+                    sub: { type: 'string', description: 'A sub-category or specific topic.' },
+                    color: { type: 'string', description: 'The theme color (violet, blue, green, orange).' },
+                    date: { type: 'string', description: 'The date in YYYY-MM-DD format.' },
+                    time: { type: 'string', description: 'The time in HH:MM format (optional).' }
                   },
                   required: ['title', 'module', 'sub', 'color', 'date']
                 }
-              },
-              {
+              }
+            },
+            {
+              type: 'function',
+              function: {
                 name: 'delete_calendar_event',
                 description: 'Remove an event from the calendar.',
                 parameters: {
-                  type: 'OBJECT' as any,
+                  type: 'object',
                   properties: {
-                    eventId: { type: 'STRING' as any, description: 'The ID of the event to delete.' }
+                    eventId: { type: 'string', description: 'The ID of the event to delete.' }
                   },
                   required: ['eventId']
                 }
               }
-            ]
-          }]
-        }
+            }
+          ]
+        })
       });
 
-      const functionCalls = response.functionCalls;
-      if (functionCalls) {
-        for (const call of functionCalls) {
-          const { name, args } = call;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get response from AI');
+      }
+
+      const data = await response.json();
+      const choice = data.choices[0];
+      const message = choice.message;
+
+      if (message.tool_calls) {
+        for (const call of message.tool_calls) {
+          const name = call.function.name;
+          const args = JSON.parse(call.function.arguments);
 
           if (name === 'add_task') {
-            const targetModuleId = (args as any).moduleId || modules[0]?.id;
+            const targetModuleId = args.moduleId || modules[0]?.id;
             if (targetModuleId) {
-              addTask(targetModuleId, { title: (args as any).title, icon: (args as any).icon || 'task', progress: 0, completed: false });
+              addTask(targetModuleId, { title: args.title, icon: args.icon || 'task', progress: 0, completed: false });
             }
           } else if (name === 'update_task') {
-            updateTask((args as any).moduleId, (args as any).taskId, { completed: (args as any).completed });
+            updateTask(args.moduleId, args.taskId, { completed: args.completed });
           } else if (name === 'delete_task') {
-            deleteTask((args as any).moduleId, (args as any).taskId);
+            deleteTask(args.moduleId, args.taskId);
           } else if (name === 'add_module') {
             addModule({
-              title: (args as any).title,
-              icon: (args as any).icon,
-              color: (args as any).color,
-              bgFrom: `from-${(args as any).color}-500`,
-              bgTo: `to-${(args as any).color}-400`,
+              title: args.title,
+              icon: args.icon,
+              color: args.color,
+              bgFrom: `from-${args.color}-500`,
+              bgTo: `to-${args.color}-400`,
               progress: 0,
-              tasks: (args as any).tasks?.map((t: any) => ({
+              tasks: args.tasks?.map((t: any) => ({
                 id: 'task-' + Math.random().toString(36).substr(2, 9),
                 title: t.title,
                 icon: t.icon,
@@ -235,35 +256,29 @@ Example: If a user says "I want to master React", you MUST generate a full learn
             });
           } else if (name === 'add_notification') {
             addNotification({
-              title: (args as any).title,
-              message: (args as any).message,
+              title: args.title,
+              message: args.message,
               type: 'motivation'
             });
           } else if (name === 'delete_module') {
-            deleteModule((args as any).moduleId);
+            deleteModule(args.moduleId);
           } else if (name === 'add_calendar_event') {
             addEvent({
-              title: (args as any).title,
-              module: (args as any).module,
-              sub: (args as any).sub,
-              color: (args as any).color as any,
-              date: (args as any).date,
-              time: (args as any).time
+              title: args.title,
+              module: args.module,
+              sub: args.sub,
+              color: args.color as any,
+              date: args.date,
+              time: args.time
             });
           } else if (name === 'delete_calendar_event') {
-            deleteEvent((args as any).eventId);
+            deleteEvent(args.eventId);
           }
         }
         
-        // After tool calls, we should ideally call the AI again to get a confirmation message
-        // For simplicity, we'll just add a confirmation message ourselves or let the AI respond if it has content
-        if (response.text) {
-          setMessages(prev => [...prev, { role: 'assistant', content: response.text || '' }]);
-        } else {
-          setMessages(prev => [...prev, { role: 'assistant', content: "Done! I've updated everything for you." }]);
-        }
+        setMessages(prev => [...prev, { role: 'assistant', content: message.content || "Done! I've updated everything for you." }]);
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: response.text || '' }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: message.content || '' }]);
       }
     } catch (error: any) {
       console.error('Error calling AI API:', error);

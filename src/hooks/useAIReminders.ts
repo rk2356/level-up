@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useModules } from '../contexts/ModuleContext';
 import { useNotifications } from '../contexts/NotificationContext';
-import { GoogleGenAI } from "@google/genai";
 
 export function useAIReminders() {
   const { modules } = useModules();
@@ -13,28 +12,39 @@ export function useAIReminders() {
     if (hasRun.current) return;
     
     const checkPendingTasks = async () => {
-      if (!process.env.GEMINI_API_KEY) {
-        console.warn("GEMINI_API_KEY is missing. AI reminders disabled.");
-        return;
-      }
-      
       const pendingTasks = modules.flatMap(m => m.tasks).filter(t => !t.completed);
       
       if (pendingTasks.length > 0) {
         try {
-          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `You are an AI assistant for a productivity app called "Level Up". 
-            The user has ${pendingTasks.length} pending tasks. 
-            Tasks include: ${pendingTasks.slice(0, 3).map(t => t.title).join(', ')}.
-            Generate a short, powerful motivational quote and a gentle reminder to complete their tasks.
-            Keep it under 100 characters for the quote and 100 characters for the reminder.
-            Format: Quote | Reminder`,
+          const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are an AI assistant for a productivity app called "Level Up". 
+                  The user has ${pendingTasks.length} pending tasks. 
+                  Tasks include: ${pendingTasks.slice(0, 3).map(t => t.title).join(', ')}.
+                  Generate a short, powerful motivational quote and a gentle reminder to complete their tasks.
+                  Keep it under 100 characters for the quote and 100 characters for the reminder.
+                  Format: Quote | Reminder`
+                }
+              ],
+              model: 'llama-3.3-70b-versatile'
+            })
           });
 
-          const text = response.text || "Keep pushing forward! | You have tasks waiting for you.";
-          const [quote, reminder] = text.split('|').map(s => s.trim());
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Server Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          if (!data.choices || !data.choices[0]) throw new Error('Invalid response from AI');
+          
+          const text = data.choices[0].message.content || "Keep pushing forward! | You have tasks waiting for you.";
+          const [quote, reminder] = text.split('|').map((s: string) => s.trim());
 
           // Check if we already sent a reminder recently (e.g., last 1 hour)
           const lastReminder = notifications.find(n => n.type === 'motivation');
