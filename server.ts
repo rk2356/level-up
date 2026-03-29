@@ -15,7 +15,7 @@ async function startServer() {
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const apiKey = process.env.GROQ_API_KEY;
+      const apiKey = process.env.GROQ_API_KEY?.trim();
       if (!apiKey) {
         return res.status(500).json({ error: 'GROQ_API_KEY is not configured on the server.' });
       }

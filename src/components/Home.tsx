@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
 import { useModules } from '../contexts/ModuleContext';
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function Home() {
   const { modules, addModule, deleteModule, updateModule, loading } = useModules();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [isAddingModule, setIsAddingModule] = useState(false);
   const [isEditingModule, setIsEditingModule] = useState<string | null>(null);
   const [newModuleTitle, setNewModuleTitle] = useState('');
@@ -91,7 +92,7 @@ export default function Home() {
     setActiveMenu(activeMenu === id ? null : id);
   };
 
-  const icons = ['star', 'videocam', 'auto_stories', 'record_voice_over', 'terminal', 'brush', 'code', 'language', 'fitness_center', 'music_note'];
+  const icons = ['star', 'videocam', 'auto_stories', 'book', 'record_voice_over', 'terminal', 'brush', 'code', 'language', 'fitness_center', 'music_note'];
 
   return (
     <motion.div 
@@ -142,9 +143,16 @@ export default function Home() {
         >
           {modules.map((module) => (
             <motion.div key={module.id} variants={item} className="relative">
-              <Link to={`/module/${module.id}`} className="glass-card rounded-[32px] p-8 relative flex flex-col justify-between min-h-[220px] group border border-white/5 block">
+              <div 
+                onClick={() => navigate(`/module/${module.id}`)}
+                className="glass-card rounded-[32px] p-8 relative flex flex-col justify-between min-h-[220px] group border border-white/5 block cursor-pointer"
+              >
                 <button 
-                  onClick={(e) => toggleMenu(e, module.id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleMenu(e, module.id);
+                  }}
                   className="absolute top-6 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors z-20"
                 >
                   <span className="material-symbols-outlined text-on-surface-variant text-xl">more_vert</span>
@@ -189,7 +197,7 @@ export default function Home() {
                     className={`h-full bg-gradient-to-r ${module.bgFrom} ${module.bgTo}`}
                   ></motion.div>
                 </div>
-              </Link>
+              </div>
               
               {/* Options Menu */}
               <AnimatePresence>
@@ -241,7 +249,7 @@ export default function Home() {
       {/* Add/Edit Module Modal */}
       <AnimatePresence>
         {(isAddingModule || isEditingModule) && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -256,7 +264,7 @@ export default function Home() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="glass-card w-full max-w-md rounded-[32px] border border-white/10 p-6 relative z-10 bg-surface-container/80"
+              className="glass-card w-full max-w-md rounded-[32px] border border-white/10 p-6 relative z-10 bg-surface-container/80 max-h-[calc(100vh-2rem)] overflow-y-auto"
             >
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold">{isEditingModule ? 'Edit Module' : 'Add New Module'}</h3>
@@ -303,6 +311,21 @@ export default function Home() {
                       </button>
                     ))}
                   </div>
+                  {(newModuleIcon === 'auto_stories' || newModuleIcon === 'book') && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 p-3 rounded-xl bg-primary/10 border border-primary/20"
+                    >
+                      <p className="text-[11px] text-primary font-bold flex items-center gap-2 uppercase tracking-wider">
+                        <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                        Syllabus Mode
+                      </p>
+                      <p className="mt-1 text-[10px] text-on-surface-variant leading-relaxed">
+                        This will create a module in Syllabus Format. You can add your own Semesters, Units, and Topics manually.
+                      </p>
+                    </motion.div>
+                  )}
                 </div>
 
                 <button 

@@ -7,7 +7,7 @@ import { useModules } from '../contexts/ModuleContext';
 
 export default function Calendar() {
   const { events } = useCalendar();
-  const { modules } = useModules();
+  const { modules, todoTasks } = useModules();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number>(new Date().getDate());
 
@@ -60,7 +60,7 @@ export default function Calendar() {
     }));
 
     // Get tasks from modules
-    const dayTasks = modules.flatMap(m => 
+    const moduleTasks = modules.flatMap(m => 
       m.tasks.filter(t => t.date === dateStr).map(t => ({
         id: t.id,
         title: t.title,
@@ -75,7 +75,21 @@ export default function Calendar() {
       }))
     );
 
-    return [...dayEvents, ...dayTasks];
+    // Get standalone todo tasks
+    const standaloneTasks = todoTasks.filter(t => t.date === dateStr).map(t => ({
+      id: t.id,
+      title: t.title,
+      module: 'To-Do',
+      sub: t.completed ? 'Completed' : 'Pending',
+      color: 'violet' as any,
+      date: t.date,
+      time: t.time,
+      completed: t.completed,
+      icon: t.icon || 'task_alt',
+      type: 'task' as const
+    }));
+
+    return [...dayEvents, ...moduleTasks, ...standaloneTasks];
   };
 
   const activities = getActivitiesForDate(selectedDate, currentDate.getMonth(), currentDate.getFullYear());

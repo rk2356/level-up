@@ -5,11 +5,11 @@ import { clsx } from 'clsx';
 import { useModules } from '../contexts/ModuleContext';
 
 export default function Todo() {
-  const { modules, updateTask, addTask, deleteTask, loading } = useModules();
+  const { modules, todoTasks, addTodoTask, updateTodoTask, deleteTodoTask, updateTask, addTask, deleteTask, loading } = useModules();
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [selectedModuleId, setSelectedModuleId] = useState(modules[0]?.id || '');
+  const [selectedModuleId, setSelectedModuleId] = useState<string>('standalone');
 
   if (loading) {
     return (
@@ -19,40 +19,67 @@ export default function Todo() {
     );
   }
 
-  // Flatten all tasks from all modules
-  const allTasks = modules.flatMap(module => 
-    module.tasks.map(task => ({
+  const [selectedFilterModuleId, setSelectedFilterModuleId] = useState<string | null>(null);
+
+  // Combine standalone tasks and module tasks
+  const allTasks = [
+    ...todoTasks.map(task => ({
       ...task,
-      moduleId: module.id,
-      moduleTitle: module.title,
-      moduleColor: module.color
-    }))
-  );
+      moduleId: 'standalone',
+      moduleTitle: 'To-Do',
+      moduleColor: 'violet'
+    })),
+    ...modules.flatMap(module => 
+      module.tasks.map(task => ({
+        ...task,
+        moduleId: module.id,
+        moduleTitle: module.title,
+        moduleColor: module.color
+      }))
+    )
+  ];
 
   const filteredTasks = allTasks.filter(task => {
-    if (filter === 'pending') return !task.completed;
-    if (filter === 'completed') return task.completed;
-    return true;
+    const statusMatch = filter === 'all' || (filter === 'completed' ? task.completed : !task.completed);
+    const moduleMatch = !selectedFilterModuleId || task.moduleId === selectedFilterModuleId;
+    return statusMatch && moduleMatch;
   });
 
   const toggleTask = (moduleId: string, taskId: string, completed: boolean) => {
-    updateTask(moduleId, taskId, { completed: !completed });
+    if (moduleId === 'standalone') {
+      updateTodoTask(taskId, { completed: !completed });
+    } else {
+      updateTask(moduleId, taskId, { completed: !completed });
+    }
   };
 
   const handleDeleteTask = (moduleId: string, taskId: string) => {
-    deleteTask(moduleId, taskId);
+    if (moduleId === 'standalone') {
+      deleteTodoTask(taskId);
+    } else {
+      deleteTask(moduleId, taskId);
+    }
   };
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskTitle.trim() || !selectedModuleId) return;
+    if (!newTaskTitle.trim()) return;
 
-    addTask(selectedModuleId, {
-      title: newTaskTitle,
-      icon: 'task_alt',
-      progress: 0,
-      completed: false
-    });
+    if (selectedModuleId === 'standalone') {
+      addTodoTask({
+        title: newTaskTitle,
+        icon: 'task_alt',
+        progress: 0,
+        completed: false
+      });
+    } else {
+      addTask(selectedModuleId, {
+        title: newTaskTitle,
+        icon: 'task_alt',
+        progress: 0,
+        completed: false
+      });
+    }
 
     setNewTaskTitle('');
     setIsModalOpen(false);
@@ -96,21 +123,68 @@ export default function Todo() {
 
       <main className="max-w-7xl mx-auto px-8 pt-2 space-y-8">
         {/* Filters */}
-        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
-          {['all', 'pending', 'completed'].map((f) => (
+        <div className="space-y-4">
+          <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+            {['all', 'pending', 'completed'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f as any)}
+                className={clsx(
+                  "px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest transition-all whitespace-nowrap",
+                  filter === f 
+                    ? "bg-violet-500 text-white" 
+                    : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
             <button
-              key={f}
-              onClick={() => setFilter(f as any)}
+              onClick={() => setSelectedFilterModuleId(null)}
               className={clsx(
-                "px-6 py-2.5 rounded-full text-sm font-bold uppercase tracking-widest transition-all whitespace-nowrap",
-                filter === f 
-                  ? "bg-violet-500 text-white" 
-                  : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/80"
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all border",
+                !selectedFilterModuleId 
+                  ? "bg-violet-500 border-violet-500 text-white" 
+                  : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
               )}
             >
-              {f}
+              All Modules
             </button>
-          ))}
+            <button
+              onClick={() => setSelectedFilterModuleId('standalone')}
+              className={clsx(
+                "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all border",
+                selectedFilterModuleId === 'standalone' 
+                  ? "bg-violet-500 border-violet-500 text-white" 
+                  : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
+              )}
+            >
+              To-Do
+            </button>
+            {modules.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setSelectedFilterModuleId(m.id)}
+                className={clsx(
+                  "px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest whitespace-nowrap transition-all border",
+                  selectedFilterModuleId === m.id 
+                    ? clsx(
+                        "text-white",
+                        m.color === 'violet' && "bg-violet-500 border-violet-500",
+                        m.color === 'blue' && "bg-blue-500 border-blue-500",
+                        m.color === 'green' && "bg-emerald-500 border-emerald-500",
+                        m.color === 'orange' && "bg-orange-500 border-orange-500"
+                      )
+                    : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10"
+                )}
+              >
+                {m.title}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tasks List */}
@@ -213,7 +287,23 @@ export default function Todo() {
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-white/40 uppercase tracking-widest ml-1">Select Module</label>
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-1 gap-2 max-h-[200px] overflow-y-auto pr-2 no-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedModuleId('standalone')}
+                      className={clsx(
+                        "flex items-center justify-between px-5 py-3 rounded-2xl border transition-all",
+                        selectedModuleId === 'standalone' 
+                          ? "bg-violet-500/20 border-violet-500/50 text-white" 
+                          : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="material-symbols-outlined text-[20px]">task_alt</span>
+                        <span className="font-bold text-sm">Standalone To-Do</span>
+                      </div>
+                      {selectedModuleId === 'standalone' && <span className="material-symbols-outlined text-sm">check_circle</span>}
+                    </button>
                     {modules.map(m => (
                       <button
                         key={m.id}
@@ -222,15 +312,37 @@ export default function Todo() {
                         className={clsx(
                           "flex items-center justify-between px-5 py-3 rounded-2xl border transition-all",
                           selectedModuleId === m.id 
-                            ? "bg-violet-500/20 border-violet-500/50 text-white" 
+                            ? clsx(
+                                "border-opacity-50 text-white",
+                                m.color === 'violet' && "bg-violet-500/20 border-violet-500",
+                                m.color === 'blue' && "bg-blue-500/20 border-blue-500",
+                                m.color === 'green' && "bg-emerald-500/20 border-emerald-500",
+                                m.color === 'orange' && "bg-orange-500/20 border-orange-500"
+                              )
                             : "bg-white/5 border-white/5 text-white/40 hover:bg-white/10"
                         )}
                       >
                         <div className="flex items-center gap-3">
-                          <span className="material-symbols-outlined text-[20px]">{m.icon}</span>
+                          <div className={clsx(
+                            "w-8 h-8 rounded-xl flex items-center justify-center",
+                            m.color === 'violet' && "bg-violet-500/20 text-violet-400",
+                            m.color === 'blue' && "bg-blue-500/20 text-blue-400",
+                            m.color === 'green' && "bg-emerald-500/20 text-emerald-400",
+                            m.color === 'orange' && "bg-orange-500/20 text-orange-400"
+                          )}>
+                            <span className="material-symbols-outlined text-[18px]">{m.icon}</span>
+                          </div>
                           <span className="font-bold text-sm">{m.title}</span>
                         </div>
-                        {selectedModuleId === m.id && <span className="material-symbols-outlined text-sm">check_circle</span>}
+                        {selectedModuleId === m.id && (
+                          <span className={clsx(
+                            "material-symbols-outlined text-sm",
+                            m.color === 'violet' && "text-violet-400",
+                            m.color === 'blue' && "text-blue-400",
+                            m.color === 'green' && "text-emerald-400",
+                            m.color === 'orange' && "text-orange-400"
+                          )}>check_circle</span>
+                        )}
                       </button>
                     ))}
                   </div>

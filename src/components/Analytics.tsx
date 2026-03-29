@@ -1,18 +1,35 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-
 import { Link } from 'react-router-dom';
+import { clsx } from 'clsx';
+import { useModules } from '../contexts/ModuleContext';
 
 export default function Analytics() {
+  const { modules, loading } = useModules();
   const [timeframe, setTimeframe] = useState<'weekly' | 'monthly'>('weekly');
   const [activeTooltip, setActiveTooltip] = useState<{x: number, y: number, value: string, label: string, color: string} | null>(null);
   const [topIndex, setTopIndex] = useState(0);
 
-  const topPerformances = [
-    { title: 'Content Creator', icon: 'emoji_events', color: '#f59e0b', bgFrom: 'from-[#f59e0b]', bgTo: 'to-[#ea580c]', progress: '85%' },
-    { title: 'Software Dev', icon: 'code', color: '#8b5cf6', bgFrom: 'from-[#8b5cf6]', bgTo: 'to-[#6d28d9]', progress: '75%' },
-    { title: 'B.Sc Studies', icon: 'auto_stories', color: '#3b82f6', bgFrom: 'from-[#3b82f6]', bgTo: 'to-[#1d4ed8]', progress: '60%' }
-  ];
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  const topPerformances = modules.length > 0 
+    ? [...modules].sort((a, b) => b.progress - a.progress).slice(0, 3).map(m => ({
+        title: m.title,
+        icon: m.icon,
+        color: m.color === 'violet' ? '#8b5cf6' : m.color === 'blue' ? '#3b82f6' : m.color === 'green' ? '#10b981' : '#f97316',
+        bgFrom: m.bgFrom,
+        bgTo: m.bgTo,
+        progress: `${m.progress}%`
+      }))
+    : [
+        { title: 'No Modules', icon: 'info', color: '#94a3b8', bgFrom: 'from-slate-400', bgTo: 'to-slate-500', progress: '0%' }
+      ];
 
   const nextTopPerformance = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -32,36 +49,61 @@ export default function Analytics() {
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
 
-  // Data points for tooltips
-  const weeklyData = [
-    { x: 150, y: 140, value: '65%', label: 'Content Creator', color: '#f97316' },
-    { x: 250, y: 150, value: '60%', label: 'Content Creator', color: '#f97316' },
-    { x: 500, y: 80, value: '85%', label: 'Content Creator', color: '#f97316' },
-    { x: 750, y: 110, value: '75%', label: 'Content Creator', color: '#f97316' },
-    
-    { x: 150, y: 180, value: '45%', label: 'B.Sc', color: '#3b82f6' },
-    { x: 250, y: 160, value: '55%', label: 'B.Sc', color: '#3b82f6' },
-    { x: 500, y: 140, value: '65%', label: 'B.Sc', color: '#3b82f6' },
-    { x: 750, y: 120, value: '75%', label: 'B.Sc', color: '#3b82f6' },
-    
-    { x: 150, y: 130, value: '70%', label: 'Software Dev', color: '#8b5cf6' },
-    { x: 250, y: 90, value: '85%', label: 'Software Dev', color: '#8b5cf6' },
-    { x: 500, y: 110, value: '75%', label: 'Software Dev', color: '#8b5cf6' },
-    { x: 750, y: 60, value: '90%', label: 'Software Dev', color: '#8b5cf6' },
-  ];
+  // Generate dynamic data points based on current modules
+  const generateChartData = (timeframe: 'weekly' | 'monthly') => {
+    const data: any[] = [];
+    const pointsCount = timeframe === 'weekly' ? 7 : 4;
+    const xStep = 1000 / (pointsCount - 1);
 
-  const monthlyData = [
-    { x: 250, y: 120, value: '70%', label: 'Content Creator', color: '#f97316' },
-    { x: 500, y: 140, value: '60%', label: 'Content Creator', color: '#f97316' },
-    
-    { x: 250, y: 160, value: '50%', label: 'B.Sc', color: '#3b82f6' },
-    { x: 500, y: 110, value: '75%', label: 'B.Sc', color: '#3b82f6' },
-    
-    { x: 250, y: 100, value: '80%', label: 'Software Dev', color: '#8b5cf6' },
-    { x: 500, y: 70, value: '90%', label: 'Software Dev', color: '#8b5cf6' },
-  ];
+    modules.forEach((module) => {
+      const color = module.color === 'violet' ? '#8b5cf6' : module.color === 'blue' ? '#3b82f6' : module.color === 'green' ? '#10b981' : '#f97316';
+      
+      for (let i = 0; i < pointsCount; i++) {
+        // Generate a slightly random but upward trending progress for visualization
+        // Base it on the current module progress
+        const baseProgress = module.progress;
+        const randomFactor = Math.sin(i + module.title.length) * 10;
+        const calculatedProgress = Math.max(10, Math.min(100, baseProgress - (pointsCount - 1 - i) * 5 + randomFactor));
+        
+        data.push({
+          x: i * xStep,
+          y: 200 - (calculatedProgress * 1.8), // Map 0-100 to 200-20 (bottom to top)
+          value: `${Math.round(calculatedProgress)}%`,
+          label: module.title,
+          color: color
+        });
+      }
+    });
+    return data;
+  };
 
-  const currentData = timeframe === 'weekly' ? weeklyData : monthlyData;
+  const currentData = generateChartData(timeframe);
+
+  // Helper to generate SVG path for a module
+  const getPathForModule = (moduleTitle: string) => {
+    const modulePoints = currentData.filter(d => d.label === moduleTitle);
+    if (modulePoints.length < 2) return "";
+
+    let path = `M${modulePoints[0].x},${modulePoints[0].y}`;
+    for (let i = 1; i < modulePoints.length; i++) {
+      // Use quadratic curves for smoothness
+      const prev = modulePoints[i-1];
+      const curr = modulePoints[i];
+      const midX = (prev.x + curr.x) / 2;
+      path += ` Q${prev.x},${prev.y} ${midX},${(prev.y + curr.y) / 2} T${curr.x},${curr.y}`;
+    }
+    return path;
+  };
+
+  const getFillPathForModule = (moduleTitle: string) => {
+    const path = getPathForModule(moduleTitle);
+    if (!path) return "";
+    const modulePoints = currentData.filter(d => d.label === moduleTitle);
+    const lastPoint = modulePoints[modulePoints.length - 1];
+    return `${path} V200 H0 Z`;
+  };
+
+  const currentTop = topPerformances[topIndex % topPerformances.length];
 
   return (
     <motion.div 
@@ -108,16 +150,16 @@ export default function Analytics() {
           className="relative overflow-hidden rounded-[24px] glass-card p-6 group cursor-pointer"
           onClick={nextTopPerformance}
         >
-          <div className={`absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b ${topPerformances[topIndex].bgFrom} ${topPerformances[topIndex].bgTo} transition-colors duration-500`}></div>
+          <div className={`absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b ${currentTop.bgFrom} ${currentTop.bgTo} transition-colors duration-500`}></div>
           <div className="absolute inset-0 shimmer opacity-30"></div>
           <div className="flex items-center justify-between relative z-10">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-500" style={{ backgroundColor: `${topPerformances[topIndex].color}33` }}>
-                <span className="material-symbols-outlined text-[24px] transition-colors duration-500" style={{ color: topPerformances[topIndex].color, fontVariationSettings: "'FILL' 1" }}>{topPerformances[topIndex].icon}</span>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors duration-500" style={{ backgroundColor: `${currentTop.color}33` }}>
+                <span className="material-symbols-outlined text-[24px] transition-colors duration-500" style={{ color: currentTop.color, fontVariationSettings: "'FILL' 1" }}>{currentTop.icon}</span>
               </div>
               <div className="flex flex-col">
-                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-0.5">Top Performance • {topPerformances[topIndex].progress}</p>
-                <h3 className="text-[18px] font-bold text-white transition-colors duration-500">{topPerformances[topIndex].title}</h3>
+                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-0.5">Top Performance • {currentTop.progress}</p>
+                <h3 className="text-[18px] font-bold text-white transition-colors duration-500">{currentTop.title}</h3>
               </div>
             </div>
             <button 
@@ -146,18 +188,18 @@ export default function Analytics() {
             </div>
             {/* Legend */}
             <div className="flex flex-wrap gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#f97316]"></span>
-                <span className="text-[11px] font-medium text-white/60">Content Creator</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#3b82f6]"></span>
-                <span className="text-[11px] font-medium text-white/60">B.Sc</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#8b5cf6]"></span>
-                <span className="text-[11px] font-medium text-white/60">Software Dev</span>
-              </div>
+              {modules.slice(0, 3).map(m => (
+                <div key={m.id} className="flex items-center gap-1.5">
+                  <span className={clsx(
+                    "w-2 h-2 rounded-full",
+                    m.color === 'violet' && "bg-[#8b5cf6]",
+                    m.color === 'blue' && "bg-[#3b82f6]",
+                    m.color === 'green' && "bg-[#10b981]",
+                    m.color === 'orange' && "bg-[#f97316]"
+                  )}></span>
+                  <span className="text-[11px] font-medium text-white/60">{m.title}</span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -182,78 +224,42 @@ export default function Analytics() {
                 preserveAspectRatio="none" 
                 viewBox="0 0 1000 200"
               >
-                {timeframe === 'weekly' ? (
-                  <>
-                    {/* Fills (20% Opacity) */}
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.2 }}
-                      d="M0,180 Q150,140 250,150 T500,80 T750,110 T1000,40 V200 H0 Z" fill="rgba(249, 115, 22, 0.1)"></motion.path>
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.3 }}
-                      d="M0,190 Q150,180 250,160 T500,140 T750,120 T1000,100 V200 H0 Z" fill="rgba(59, 130, 246, 0.1)"></motion.path>
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.4 }}
-                      d="M0,160 Q150,130 250,90 T500,110 T750,60 T1000,20 V200 H0 Z" fill="rgba(139, 92, 246, 0.1)"></motion.path>
-                    
-                    {/* Lines (Smooth) */}
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.1 }}
-                      d="M0,180 Q150,140 250,150 T500,80 T750,110 T1000,40" fill="none" stroke="#f97316" strokeWidth="3"></motion.path>
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.2 }}
-                      d="M0,190 Q150,180 250,160 T500,140 T750,120 T1000,100" fill="none" stroke="#3b82f6" strokeWidth="3"></motion.path>
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.3 }}
-                      d="M0,160 Q150,130 250,90 T500,110 T750,60 T1000,20" fill="none" stroke="#8b5cf6" strokeWidth="3"></motion.path>
-                  </>
-                ) : (
-                  <>
-                    {/* Monthly Data */}
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.2 }}
-                      d="M0,150 Q250,120 500,140 T1000,30 V200 H0 Z" fill="rgba(249, 115, 22, 0.1)"></motion.path>
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.3 }}
-                      d="M0,170 Q250,160 500,110 T1000,80 V200 H0 Z" fill="rgba(59, 130, 246, 0.1)"></motion.path>
-                    <motion.path 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 1, delay: 0.4 }}
-                      d="M0,140 Q250,100 500,70 T1000,10 V200 H0 Z" fill="rgba(139, 92, 246, 0.1)"></motion.path>
-                    
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.1 }}
-                      d="M0,150 Q250,120 500,140 T1000,30" fill="none" stroke="#f97316" strokeWidth="3"></motion.path>
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.2 }}
-                      d="M0,170 Q250,160 500,110 T1000,80" fill="none" stroke="#3b82f6" strokeWidth="3"></motion.path>
-                    <motion.path 
-                      initial={{ pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 1.5, ease: "easeInOut", delay: 0.3 }}
-                      d="M0,140 Q250,100 500,70 T1000,10" fill="none" stroke="#8b5cf6" strokeWidth="3"></motion.path>
-                  </>
-                )}
+                {/* Dynamic Module Paths */}
+                {modules.map((module, index) => {
+                  const color = module.color === 'violet' ? '#8b5cf6' : module.color === 'blue' ? '#3b82f6' : module.color === 'green' ? '#10b981' : '#f97316';
+                  return (
+                    <g key={module.id}>
+                      {/* Area Fill */}
+                      <motion.path
+                        d={getFillPathForModule(module.title)}
+                        fill={`url(#gradient-${module.id})`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.15 }}
+                        transition={{ duration: 1, delay: index * 0.1 }}
+                      />
+                      
+                      {/* Line */}
+                      <motion.path
+                        d={getPathForModule(module.title)}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 1.5, ease: "easeInOut", delay: index * 0.1 }}
+                      />
+
+                      {/* Gradient Definition */}
+                      <defs>
+                        <linearGradient id={`gradient-${module.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor={color} stopOpacity="0.5" />
+                          <stop offset="100%" stopColor={color} stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                    </g>
+                  );
+                })}
               </motion.svg>
             </AnimatePresence>
 

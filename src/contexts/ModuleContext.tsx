@@ -11,6 +11,11 @@ export interface Task {
   date?: string; // YYYY-MM-DD
   time?: string; // 12h format e.g. "10:30 AM"
   day?: string; // e.g. "Wednesday"
+  module_id?: string; // Optional for standalone tasks
+  answer?: string; // For syllabus topics
+  type?: 'task' | 'unit' | 'topic' | 'semester'; // To distinguish
+  parent_id?: string; // For hierarchy
+  pdf_url?: string; // For PDF storage
 }
 
 export interface Module {
@@ -23,6 +28,7 @@ export interface Module {
   bgTo: string;
   streak: string;
   tasks: Task[];
+  isSyllabus?: boolean;
 }
 
 const today = new Date().toISOString().split('T')[0];
@@ -98,6 +104,7 @@ const defaultModules: Module[] = [
 
 interface ModuleContextType {
   modules: Module[];
+  todoTasks: Task[];
   loading: boolean;
   addModule: (module: Omit<Module, 'id' | 'streak'>) => Promise<void>;
   updateModule: (id: string, updates: Partial<Module>) => Promise<void>;
@@ -105,34 +112,46 @@ interface ModuleContextType {
   deleteTask: (moduleId: string, taskId: string) => Promise<void>;
   addTask: (moduleId: string, task: Omit<Task, 'id'>) => Promise<void>;
   updateTask: (moduleId: string, taskId: string, updates: Partial<Task>) => Promise<void>;
+  addTodoTask: (task: Omit<Task, 'id'>) => Promise<void>;
+  updateTodoTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  deleteTodoTask: (id: string) => Promise<void>;
 }
 
 const ModuleContext = createContext<ModuleContextType>({
   modules: [],
+  todoTasks: [],
   loading: true,
   addModule: async () => {},
   updateModule: async () => {},
   deleteModule: async () => {},
   deleteTask: async () => {},
   addTask: async () => {},
-  updateTask: async () => {}
+  updateTask: async () => {},
+  addTodoTask: async () => {},
+  updateTodoTask: async () => {},
+  deleteTodoTask: async () => {}
 });
+
+import { BSC_ZOOLOGY_SYLLABUS } from '../constants/syllabus';
 
 export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [modules, setModules] = useState<Module[]>([]);
+  const [todoTasks, setTodoTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Initial Fetch
   useEffect(() => {
     if (!user) {
       setModules([]);
+      setTodoTasks([]);
       setLoading(false);
       return;
     }
 
     if (!isSupabaseConfigured) {
       setModules(defaultModules);
+      setTodoTasks([]);
       setLoading(false);
       return;
     }
@@ -147,7 +166,7 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (modulesError) throw modulesError;
 
-        // Fetch tasks
+        // Fetch module tasks
         const { data: tasksData, error: tasksError } = await supabase
           .from('tasks')
           .select('*')
@@ -155,32 +174,64 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         if (tasksError) throw tasksError;
 
+        // Fetch standalone todo tasks
+        const { data: todoData, error: todoError } = await supabase
+          .from('todo_tasks')
+          .select('*')
+          .eq('user_id', user.id);
+
+        // If table doesn't exist, we'll just have an empty array for now
+        // In a real app, we'd handle this more gracefully
+        const formattedTodoTasks = todoError ? [] : todoData.map(t => ({
+          id: t.id,
+          title: t.title,
+          icon: t.icon,
+          progress: t.progress,
+          completed: t.completed,
+          date: t.date,
+          time: t.time,
+          day: t.day
+        }));
+        setTodoTasks(formattedTodoTasks);
+
         if (modulesData.length === 0) {
+          console.log('No modules found in Supabase, seeding default data...');
           // Seed default data for new user
           await seedDefaultData(user.id);
         } else {
-          const formattedModules = modulesData.map(m => ({
-            id: m.id,
-            title: m.title,
-            icon: m.icon,
-            progress: m.progress,
-            color: m.color,
-            bgFrom: m.bg_from,
-            bgTo: m.bg_to,
-            streak: m.streak,
-            tasks: tasksData
-              .filter(t => t.module_id === m.id)
-              .map(t => ({
-                id: t.id,
-                title: t.title,
-                icon: t.icon,
-                progress: t.progress,
-                completed: t.completed,
-                date: t.date,
-                time: t.time,
-                day: t.day
-              }))
-          }));
+          console.log(`Found ${modulesData.length} modules in Supabase.`);
+          const formattedModules = modulesData.map(m => {
+            // Robust check for isSyllabus
+            const isSyllabus = m.is_syllabus || m.icon === 'auto_stories' || m.icon === 'book';
+            
+            return {
+              id: m.id,
+              title: m.title,
+              icon: m.icon,
+              progress: m.progress,
+              color: m.color,
+              bgFrom: m.bg_from,
+              bgTo: m.bg_to,
+              streak: m.streak,
+              isSyllabus: isSyllabus,
+              tasks: tasksData
+                .filter(t => t.module_id === m.id)
+                .map(t => ({
+                  id: t.id,
+                  title: t.title,
+                  icon: t.icon,
+                  progress: t.progress,
+                  completed: t.completed,
+                  date: t.date,
+                  time: t.time,
+                  day: t.day,
+                  answer: t.answer,
+                  type: t.type,
+                  parent_id: t.parent_id,
+                  pdf_url: t.pdf_url
+                }))
+            };
+          });
           setModules(formattedModules);
         }
       } catch (error) {
@@ -236,14 +287,18 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const addModule = async (module: Omit<Module, 'id' | 'streak'>) => {
     const id = module.title.toLowerCase().replace(/\s+/g, '-') + '-' + Date.now();
+    const isSyllabus = module.icon === 'auto_stories' || module.icon === 'book';
+    
     const newModule: Module = {
       ...module,
       id,
-      tasks: module.tasks || [],
-      streak: '0 day streak'
+      tasks: [],
+      streak: '0 day streak',
+      isSyllabus
     };
 
     if (!user || !isSupabaseConfigured) {
+      setModules(prev => [...prev, newModule]);
       return;
     }
 
@@ -257,8 +312,10 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         color: newModule.color,
         bg_from: newModule.bgFrom,
         bg_to: newModule.bgTo,
-        streak: newModule.streak
+        streak: newModule.streak,
+        is_syllabus: newModule.isSyllabus
       });
+
       setModules(prev => [...prev, newModule]);
     } catch (error) {
       console.error('Error adding module:', error);
@@ -304,13 +361,52 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
     try {
-      await supabase.from('tasks').delete().eq('id', taskId).eq('user_id', user.id);
+      const module = modules.find(m => m.id === moduleId);
+      if (!module) return;
+
+      const tasksToDelete = [taskId];
+      
+      // If it's a syllabus module, find all children recursively
+      if (module.isSyllabus) {
+        const findChildren = (pid: string) => {
+          const children = module.tasks.filter(t => t.parent_id === pid);
+          children.forEach(c => {
+            tasksToDelete.push(c.id);
+            findChildren(c.id);
+          });
+        };
+        findChildren(taskId);
+      }
+
+      // Delete associated PDFs from storage
+      const tasksWithPdfs = module.tasks.filter(t => tasksToDelete.includes(t.id) && t.pdf_url);
+      for (const t of tasksWithPdfs) {
+        if (t.pdf_url) {
+          // Extract file path from URL (assuming it's in the 'syllabus-pdfs' bucket)
+          const parts = t.pdf_url.split('/');
+          const fileName = parts[parts.length - 1];
+          if (fileName) {
+            await supabase.storage.from('syllabus-pdfs').remove([fileName]);
+          }
+        }
+      }
+
+      // Delete from Supabase
+      await supabase.from('tasks').delete().in('id', tasksToDelete).eq('user_id', user.id);
       
       setModules(prev => prev.map(m => {
         if (m.id === moduleId) {
-          const newTasks = m.tasks.filter(t => t.id !== taskId);
-          const completedTasks = newTasks.filter(t => t.completed).length;
-          const newProgress = newTasks.length > 0 ? Math.round((completedTasks / newTasks.length) * 100) : 0;
+          const newTasks = m.tasks.filter(t => !tasksToDelete.includes(t.id));
+          
+          let newProgress = 0;
+          if (m.isSyllabus) {
+            const topics = newTasks.filter(t => t.type === 'topic');
+            const completedTopics = topics.filter(t => t.completed).length;
+            newProgress = topics.length > 0 ? Math.round((completedTopics / topics.length) * 100) : 0;
+          } else {
+            const completedTasks = newTasks.filter(t => t.completed).length;
+            newProgress = newTasks.length > 0 ? Math.round((completedTasks / newTasks.length) * 100) : 0;
+          }
           
           // Update module progress in DB
           updateModule(moduleId, { progress: newProgress });
@@ -350,7 +446,11 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         completed: newTask.completed,
         date: newTask.date,
         time: newTask.time,
-        day: newTask.day
+        day: newTask.day,
+        type: newTask.type || 'task',
+        parent_id: newTask.parent_id,
+        answer: newTask.answer,
+        pdf_url: newTask.pdf_url
       });
 
       setModules(prev => prev.map(m => {
@@ -375,13 +475,28 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
     try {
-      await supabase.from('tasks').update(updates).eq('id', taskId).eq('user_id', user.id);
+      console.log(`Updating task ${taskId} in module ${moduleId}...`, updates);
+      const { error } = await supabase.from('tasks').update(updates).eq('id', taskId).eq('user_id', user.id);
+      
+      if (error) {
+        console.error('Supabase updateTask error:', error);
+        throw error;
+      }
 
+      console.log('Task updated successfully in Supabase');
       setModules(prev => prev.map(m => {
         if (m.id === moduleId) {
           const newTasks = m.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
-          const completedTasks = newTasks.filter(t => t.completed).length;
-          const newProgress = newTasks.length > 0 ? Math.round((completedTasks / newTasks.length) * 100) : 0;
+          
+          let newProgress = 0;
+          if (m.isSyllabus) {
+            const topics = newTasks.filter(t => t.type === 'topic');
+            const completedTopics = topics.filter(t => t.completed).length;
+            newProgress = topics.length > 0 ? Math.round((completedTopics / topics.length) * 100) : 0;
+          } else {
+            const completedTasks = newTasks.filter(t => t.completed).length;
+            newProgress = newTasks.length > 0 ? Math.round((completedTasks / newTasks.length) * 100) : 0;
+          }
           
           updateModule(moduleId, { progress: newProgress });
           
@@ -394,8 +509,85 @@ export const ModuleProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const addTodoTask = async (task: Omit<Task, 'id'>) => {
+    const now = new Date();
+    const taskId = 'todo-' + Date.now();
+    const newTask: Task = {
+      ...task,
+      id: taskId,
+      date: task.date || now.toISOString().split('T')[0],
+      day: task.day || now.toLocaleDateString('en-US', { weekday: 'long' }),
+      time: task.time || now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    };
+
+    if (!user || !isSupabaseConfigured) {
+      setTodoTasks(prev => [...prev, newTask]);
+      return;
+    }
+
+    try {
+      await supabase.from('todo_tasks').insert({
+        id: newTask.id,
+        user_id: user.id,
+        title: newTask.title,
+        icon: newTask.icon,
+        progress: newTask.progress,
+        completed: newTask.completed,
+        date: newTask.date,
+        time: newTask.time,
+        day: newTask.day
+      });
+      setTodoTasks(prev => [...prev, newTask]);
+    } catch (error) {
+      console.error('Error adding todo task:', error);
+      // Fallback to local state if table doesn't exist
+      setTodoTasks(prev => [...prev, newTask]);
+    }
+  };
+
+  const updateTodoTask = async (id: string, updates: Partial<Task>) => {
+    if (!user || !isSupabaseConfigured) {
+      setTodoTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+      return;
+    }
+    try {
+      await supabase.from('todo_tasks').update(updates).eq('id', id).eq('user_id', user.id);
+      setTodoTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    } catch (error) {
+      console.error('Error updating todo task:', error);
+      setTodoTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    }
+  };
+
+  const deleteTodoTask = async (id: string) => {
+    if (!user || !isSupabaseConfigured) {
+      setTodoTasks(prev => prev.filter(t => t.id !== id));
+      return;
+    }
+    try {
+      await supabase.from('todo_tasks').delete().eq('id', id).eq('user_id', user.id);
+      setTodoTasks(prev => prev.filter(t => t.id !== id));
+    } catch (error) {
+      console.error('Error deleting todo task:', error);
+      setTodoTasks(prev => prev.filter(t => t.id !== id));
+    }
+  };
+
   return (
-    <ModuleContext.Provider value={{ modules, loading, addModule, updateModule, deleteModule, deleteTask, addTask, updateTask }}>
+    <ModuleContext.Provider value={{ 
+      modules, 
+      todoTasks, 
+      loading, 
+      addModule, 
+      updateModule, 
+      deleteModule, 
+      deleteTask, 
+      addTask, 
+      updateTask,
+      addTodoTask,
+      updateTodoTask,
+      deleteTodoTask
+    }}>
       {children}
     </ModuleContext.Provider>
   );
